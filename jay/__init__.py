@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 import os
 import sys
-import csv
 import io
 from os.path import join
 from docopt import docopt
@@ -59,7 +58,7 @@ class Jay(object):
             with io.open(self.idx, 'r') as f:
                 # get each row from index,
                 # where each csv row is [dir, access_timestamp]
-                self.idx_rows = {d: ts for d, ts in csv.reader(f)}
+                self.idx_rows = {d: ts for d, ts in reader(f)}
         except:
             raise Exception("jay: an error ocurred while opening the index {}.".format(self.idx))
 
@@ -90,7 +89,7 @@ class Jay(object):
                 # save the most recent dirs only
                 rows = [tup for tup in self.idx_rows.items()]
                 rows = sorted(rows, key=lambda x: x[1], reverse=True)
-                csv.writer(f).writerows(rows[:self.idx_max_size])
+                writer(f, rows[:self.idx_max_size])
         except Exception as e:
             raise Exception("jay: an error ocurred while opening the index {}.".format(e))
 
@@ -270,6 +269,17 @@ def parse_parent_dir(path):
         else:
             skip_next = skip_next + 1
     return result
+
+def reader(f):
+    d = f.read().splitlines()
+    for line in d:
+        yield line.split(',')
+
+
+def writer(f, rows):
+    for row in rows:
+        f.write(str(row) + '\n')
+
 
 def main():
     args = docopt(__doc__, argv=None, help=True,

@@ -169,20 +169,23 @@ def walkdir(rootdir, terms):
 
     term = terms.pop()
     matched_dir = ''
-    match = process.extractOne(term, listdir(rootdir))
+    match = process.extractOne(term, listdir(rootdir, term.startswith('.') and term != '..'))
     if match:
         matched_dir, score = match
+    elif term == "..":
+        matched_dir = ".."
     fulldir = join(rootdir, matched_dir)
-    return walkdir(fulldir, terms)
+    return parse_parent_dir(walkdir(fulldir, terms))
 
 
-def listdir(path):
+def listdir(path, ignore=True):
     """Lists directories only"""
     directories = []
     for d in os.listdir(path):
         if not os.path.isdir(os.path.join(path, d)):
             continue
-        directories.append(d)
+        if not (d.startswith('.') and ignore):
+            directories.append(d)
     return sorted(directories)
 
 
@@ -191,7 +194,6 @@ def autocomplete(params, current_position):
 
 
 def run(args):
-
     if args['--setup-bash']:
         setup_bash()
         return 0
@@ -200,7 +202,12 @@ def run(args):
         return autocomplete(params=args['<params>'],
                             current_position=args['<current-position>'])
 
+    result = []
     search_terms = args['INPUT']
+    for d in search_terms:
+        for sub_dirs in d.split('/'):
+            result.append(sub_dirs)
+    search_terms = result
 
     # if len(terms) is 0 jump to previous dir
     if not len(search_terms):
@@ -210,7 +217,7 @@ def run(args):
 
     # '-' means jump to previous directory
     # otherwise check if first_term is a relative dir of cwd
-    rel_directory = Jay().recent_dir if first_term == '-' else relative_of_cwd(first_term)
+    rel_directory = relative_of_cwd(first_term)
 
     # if len(search_terms) is > 1:
     #   if first arg is a relative dir, use it as rootdir and then
@@ -248,6 +255,21 @@ def out(d):
        this could be used to provide other forms of output"""
     print(d)
 
+def parse_parent_dir(path):
+    result = ""
+    skip_next = 0
+    if path.startswith('/'):
+        path = path[1:]
+    for d in reversed(path.split('/')):
+        if d != '..':
+            if skip_next == 0:
+                result = d + result
+                result = '/' + result
+            else:
+                skip_next = skip_next - 1
+        else:
+            skip_next = skip_next + 1
+    return result
 
 def main():
     args = docopt(__doc__, argv=None, help=True,

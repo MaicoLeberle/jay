@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 import os
 import sys
-import csv
 import io
 from os.path import join
 from docopt import docopt
@@ -11,11 +10,14 @@ from time import time
 
 
 __doc__ = """
-Usage: jay [-h] [--setup-bash | --version] [INPUT ...]
+Usage:
+    jay [-h] [--setup-bash | --version] [INPUT ...]
+    jay --autocomplete <current-position> <params>...
 
 -h --help       show this
 --setup-bash    setup `j` function and autocomplete for bash
 --version       print current version
+--autocomplete  provides autocompletion instead of just one matching dir
 """
 
 
@@ -56,7 +58,7 @@ class Jay(object):
             with io.open(self.idx, 'r') as f:
                 # get each row from index,
                 # where each csv row is [dir, access_timestamp]
-                self.idx_rows = {d: ts for d, ts in csv.reader(f)}
+                self.idx_rows = {d: ts for d, ts in reader(f)}
         except:
             raise Exception("jay: an error ocurred while opening the index {}.".format(self.idx))
 
@@ -87,7 +89,7 @@ class Jay(object):
                 # save the most recent dirs only
                 rows = [tup for tup in self.idx_rows.items()]
                 rows = sorted(rows, key=lambda x: x[1], reverse=True)
-                csv.writer(f).writerows(rows[:self.idx_max_size])
+                writer(f, rows[:self.idx_max_size])
         except Exception as e:
             raise Exception("jay: an error ocurred while opening the index {}.".format(e))
 
@@ -166,40 +168,55 @@ def walkdir(rootdir, terms):
 
     term = terms.pop()
     matched_dir = ''
-    match = process.extractOne(term, listdir(rootdir))
+    match = process.extractOne(term, listdir(rootdir, term.startswith('.') and term != '..'))
     if match:
         matched_dir, score = match
+    elif term == "..":
+        matched_dir = ".."
     fulldir = join(rootdir, matched_dir)
-    return walkdir(fulldir, terms)
+    return parse_parent_dir(walkdir(fulldir, terms))
 
 
-def listdir(path):
+def listdir(path, ignore=True):
     """Lists directories only"""
     directories = []
     for d in os.listdir(path):
         if not os.path.isdir(os.path.join(path, d)):
             continue
-        directories.append(d)
+        if not (d.startswith('.') and ignore):
+            directories.append(d)
     return sorted(directories)
 
 
-def run(args):
+def autocomplete(params, current_position):
+    out(current_position)
 
+
+def run(args):
     if args['--setup-bash']:
         setup_bash()
         return 0
 
-    search_terms = args['INPUT']
+    if args['--autocomplete']:
+        return autocomplete(params=args['<params>'],
+                            current_position=args['<current-position>'])
 
-    # if len(terms) is 0 jump to $HOME
+    result = []
+    search_terms = args['INPUT']
+    for d in search_terms:
+        for sub_dirs in d.split('/'):
+            result.append(sub_dirs)
+    search_terms = result
+
+    # if len(terms) is 0 jump to previous dir
     if not len(search_terms):
-        return dispatch(os.path.expanduser('~'))
+        return dispatch(Jay().recent_dir)
 
     first_term = search_terms[0]  # first search term
 
     # '-' means jump to previous directory
     # otherwise check if first_term is a relative dir of cwd
-    rel_directory = Jay().recent_dir if first_term == '-' else relative_of_cwd(first_term)
+    rel_directory = relative_of_cwd(first_term)
 
     # if len(search_terms) is > 1:
     #   if first arg is a relative dir, use it as rootdir and then
@@ -228,6 +245,7 @@ def run(args):
 
 def setup_bash():
     print(os.path.join(os.path.dirname(__file__), 'jay.bash'))
+    print(os.path.join(os.path.dirname(__file__), 'jay-autocomplete.bash'))
 
 
 def out(d):
@@ -235,6 +253,32 @@ def out(d):
        Helps mocking for tests, and maybe in the future
        this could be used to provide other forms of output"""
     print(d)
+
+def parse_parent_dir(path):
+    result = ""
+    skip_next = 0
+    if path.startswith('/'):
+        path = path[1:]
+    for d in reversed(path.split('/')):
+        if d != '..':
+            if skip_next == 0:
+                result = d + result
+                result = '/' + result
+            else:
+                skip_next = skip_next - 1
+        else:
+            skip_next = skip_next + 1
+    return result
+
+def reader(f):
+    d = f.read().splitlines()
+    for line in d:
+        yield line.split(',')
+
+
+def writer(f, rows):
+    for row in rows:
+        f.write(str(row) + '\n')
 
 
 def main():
